@@ -106,6 +106,9 @@ while True:
     key = cv2.waitKey(1) & 0xFF
 
 
+
+
+
     if key == ord('c'):
         # Captura una imagen
         captured_image = frame.copy()
