@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Video en Vivo y Medición de Iluminación</title>
+    <style>
+        #video-container {
+            position: relative;
+        }
+        #video {
+            width: 50%;
+            display: block;
+        }
+        #selection {
+            position: absolute;
+            border: 2px solid red;
+            pointer-events: none;
+            width: 50px; /* Tamaño predeterminado */
+            height: 50px; /* Tamaño predeterminado */
+        }
+        #auto-selection {
+            position: absolute;
+            border: 2px solid blue;
+            pointer-events: none;
+            width: 50px; /* Tamaño predeterminado */
+            height: 50px; /* Tamaño predeterminado */
+        }
+    </style>
+</head>
+<body>
+    <h1>Video en Vivo</h1>
+    <div id="video-container">
+        <img id="video" src="{{ url_for('video_feed') }}" />
+        <div id="selection"></div>
+        <div id="auto-selection"></div>
+    </div>
+    <button onclick="getLux()">Medir Iluminación</button>
+    <p id="lux-value"></p>
+
+    <script>
+        const video = document.getElementById('video');
+        const selection = document.getElementById('selection');
+        const autoSelection = document.getElementById('auto-selection');
+        let startX, startY;
+
+        video.addEventListener('mousedown', (e) => {
+            startX = e.offsetX;
+            startY = e.offsetY;
+            selection.style.left = `${startX - 25}px`; // Centra la selección
+            selection.style.top = `${startY - 25}px`;  // Centra la selección
+        });
+
+        function getLux() {
+            if (startX !== undefined && startY !== undefined) {
+                captureAndSendImage(startX, startY);
+                startX = undefined;
+                startY = undefined;
+            }
+        }
+
+        function captureAndSendImage(x, y) {
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            canvas.width = video.width;
+            canvas.height = video.height;
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+            // Extraer la región de interés
+            const roiX = Math.max(0, x - 25);
+            const roiY = Math.max(0, y - 25);
+            const roiWidth = 50;
+            const roiHeight = 50;
+
+            const imageData = ctx.getImageData(roiX, roiY, roiWidth, roiHeight);
+
+            // Convertir canvas a base64
+            const dataURL = canvas.toDataURL('image/png');
+
+            fetch('/measure_lux', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    imageData: dataURL,
+                    x: x,
+                    y: y,
+                    size: 25,  // Tamaño predeterminado
+                    width: canvas.width,
+                    height: canvas.height
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.lux !== undefined) {
+                    document.getElementById('lux-value').textContent = `Lux: ${data.lux.toFixed(2)}`;
+                } else {
+                    document.getElementById('lux-value').textContent = `Error: ${data.error}`;
+                }
+            })
+            .catch(error => {
+                document.getElementById('lux-value').textContent = `Error: ${error.message}`;
+            });
+        }
+
+        function updateAutoSelection() {
+            fetch('/get_auto_selection')
+                .then(response => response.json())
+                .then(data => {
+                    const x = data.x;
+                    const y = data.y;
+                    autoSelection.style.left = `${x}px`;
+                    autoSelection.style.top = `${y}px`;
+                });
+        }
+
+        setInterval(updateAutoSelection, 1000); // Actualiza la selección automática cada segundo
+    </script>
+</body>
+</html>
