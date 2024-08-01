@@ -92,7 +92,7 @@
             .then(response => response.json())
             .then(data => {
                 if (data.lux !== undefined) {
-                    document.getElementById('lux-value').textContent = `Lux: ${data.lux.toFixed(2)}`;
+                    document.getElementById('lux-value').textContent = `Iluminación: ${data.lux.toFixed(2)} lux`;
                 } else {
                     document.getElementById('lux-value').textContent = `Error: ${data.error}`;
                 }

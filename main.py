@@ -29,11 +29,12 @@ def generate_frames():
         gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
         # Encontrar la región con mayor iluminación
-        max_loc = find_brightest_region(gray_frame, 50, 50)
+        box_width, box_height = 50, 50  # Tamaño de la caja para análisis
+        max_loc = find_brightest_region(gray_frame, box_width, box_height)
         if max_loc:
             auto_selection_position = max_loc
             # Dibujar la selección fija en la región más iluminada
-            cv2.rectangle(frame, max_loc, (max_loc[0] + 50, max_loc[1] + 50), (255, 0, 0), 2)
+            cv2.rectangle(frame, max_loc, (max_loc[0] + box_width, max_loc[1] + box_height), (255, 0, 0), 2)
 
         # Convertir la imagen de nuevo a BGR para mostrarla en color con OpenCV
         frame = cv2.cvtColor(gray_frame, cv2.COLOR_GRAY2BGR)
@@ -67,8 +68,8 @@ def generate_frames():
 
 def find_brightest_region(gray_frame, box_width, box_height):
     """Encuentra la región con mayor iluminación en el frame."""
-    max_avg_intensity = 0
-    brightest_loc = None
+    max_avg_intensity = -1
+    brightest_loc = (0, 0)
     for y in range(0, gray_frame.shape[0] - box_height, box_height):
         for x in range(0, gray_frame.shape[1] - box_width, box_width):
             roi = gray_frame[y:y+box_height, x:x+box_width]
