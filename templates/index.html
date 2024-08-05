@@ -1,79 +1,207 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Video en Vivo y Medición de Iluminación</title>
+    <title>Captura y Medición de Iluminación</title>
     <style>
-        #video-container {
-            position: relative;
+        body {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #f0f0f0;
         }
-        #video {
-            width: 50%;
+        #container {
+            display: flex;
+            align-items: center;
+            position: relative;
+            margin-bottom: 20px;
+        }
+        #image-container {
+            position: relative;
+            width: 500px;
+            height: 400px;
+            background-color: #fff;
+            border: 1px solid #ddd;
+            overflow: hidden;
+        }
+        #captured-image {
             display: block;
+            max-width: 100%;
+            max-height: 100%;
         }
         #selection {
             position: absolute;
             border: 2px solid red;
             pointer-events: none;
-            width: 50px; /* Tamaño predeterminado */
-            height: 50px; /* Tamaño predeterminado */
+            width: 4px;
+            height: 4px;
         }
         #auto-selection {
             position: absolute;
             border: 2px solid blue;
             pointer-events: none;
-            width: 50px; /* Tamaño predeterminado */
-            height: 50px; /* Tamaño predeterminado */
+            width: 4px;
+            height: 4px;
+        }
+        .button-group {
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            margin: 0 10px;
+        }
+        .button-group.left {
+            margin-right: 10px;
+        }
+        .button-group.right {
+            margin-left: 10px;
+        }
+        .button-63 {
+            align-items: center;
+            background-image: linear-gradient(144deg, #AF40FF, #5B42F3 50%, #00DDEB);
+            border: 0;
+            border-radius: 8px;
+            box-shadow: rgba(151, 65, 252, 0.2) 0 15px 30px -5px;
+            box-sizing: border-box;
+            color: #FFFFFF;
+            display: flex;
+            font-family: Phantomsans, sans-serif;
+            font-size: 16px;
+            justify-content: center;
+            line-height: 1em;
+            max-width: 100%;
+            min-width: 120px;
+            padding: 15px 20px;
+            text-decoration: none;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: manipulation;
+            white-space: nowrap;
+            cursor: pointer;
+            margin-bottom: 10px;
+        }
+        .button-63:active,
+        .button-63:hover {
+            outline: 0;
+        }
+        @media (min-width: 768px) {
+            .button-63 {
+                font-size: 20px;
+                min-width: 140px;
+                padding: 19px 24px;
+            }
+        }
+        #info-box {
+            width: 500px;
+            background-color: #007bff;
+            color: #fff;
+            text-align: center;
+            padding: 10px;
+            font-size: 18px;
+            margin-bottom: 10px;
+        }
+        #pattern-select {
+            margin-bottom: 20px;
+            font-size: 18px;
+            padding: 5px;
         }
     </style>
 </head>
 <body>
-    <h1>Video en Vivo</h1>
-    <div id="video-container">
-        <img id="video" src="{{ url_for('video_feed') }}" />
-        <div id="selection"></div>
-        <div id="auto-selection"></div>
+    <div id="info-box">Datos De Almacenamiento</div>
+
+    <!-- Agregar el select de patrones -->
+    <select id="pattern-select" onchange="changePattern()">
+        <option value="ECE-R">ECE-R</option>
+        <option value="ECE-L">ECE-L</option>
+        <option value="ECE-simétrico">ECE-simétrico</option>
+        <option value="VOL">VOL</option>
+        <option value="VOR">VOR</option>
+        <option value="DOT/SAE mecánico">DOT/SAE mecánico</option>
+    </select>
+
+    <div id="container">
+        <div class="button-group left">
+            <button class="button-63" onclick="captureImage('altaIzquierda')">Alta Izquierda</button>
+            <button class="button-63" onclick="captureImage('bajaIzquierda')">Baja Izquierda</button>
+        </div>
+        <div id="image-container">
+            <img id="captured-image" />
+            <div id="selection"></div>
+            <div id="auto-selection"></div>
+        </div>
+        <div class="button-group right">
+            <button class="button-63" onclick="captureImage('altaDerecha')">Alta Derecha</button>
+            <button class="button-63" onclick="captureImage('bajaDerecha')">Baja Derecha</button>
+        </div>
     </div>
-    <button onclick="getLux()">Medir Iluminación</button>
+    <button class="button-63" onclick="measureLux()">Medir Iluminación</button>
     <p id="lux-value"></p>
 
     <script>
-        const video = document.getElementById('video');
+        const capturedImage = document.getElementById('captured-image');
         const selection = document.getElementById('selection');
         const autoSelection = document.getElementById('auto-selection');
-        let startX, startY;
+        const luxValue = document.getElementById('lux-value');
+        let currentPattern = "ECE-R";
 
-        video.addEventListener('mousedown', (e) => {
-            startX = e.offsetX;
-            startY = e.offsetY;
-            selection.style.left = `${startX - 25}px`; // Centra la selección
-            selection.style.top = `${startY - 25}px`;  // Centra la selección
-        });
-
-        function getLux() {
-            if (startX !== undefined && startY !== undefined) {
-                captureAndSendImage(startX, startY);
-                startX = undefined;
-                startY = undefined;
-            }
+        function changePattern() {
+            const selectElement = document.getElementById('pattern-select');
+            currentPattern = selectElement.value;
+            console.log(`Patrón seleccionado: ${currentPattern}`);
         }
 
-        function captureAndSendImage(x, y) {
-            const canvas = document.createElement('canvas');
-            const ctx = canvas.getContext('2d');
-            canvas.width = video.width;
-            canvas.height = video.height;
-            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        capturedImage.addEventListener('click', (event) => {
+            const rect = capturedImage.getBoundingClientRect();
+            const x = event.clientX - rect.left;
+            const y = event.clientY - rect.top;
+            selection.style.left = `${x - 2}px`;
+            selection.style.top = `${y - 2}px`;
+            measureLux(x, y);
+        });
 
-            // Extraer la región de interés
-            const roiX = Math.max(0, x - 25);
-            const roiY = Math.max(0, y - 25);
-            const roiWidth = 50;
-            const roiHeight = 50;
+        function captureImage(button) {
+            fetch('/capture_image')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.imageData) {
+                        capturedImage.src = data.imageData;
+                        updateAutoSelection(data.imageData, currentPattern);
+                    }
+                })
+                .catch(error => console.error('Error al capturar la imagen:', error));
+        }
 
-            const imageData = ctx.getImageData(roiX, roiY, roiWidth, roiHeight);
+        function updateAutoSelection(imageData, pattern) {
+            fetch('/get_auto_selection', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    imageData: imageData,
+                    pattern: pattern
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.x !== undefined && data.y !== undefined && data.size !== undefined) {
+                    autoSelection.style.left = `${data.x - data.size / 2}px`;
+                    autoSelection.style.top = `${data.y - data.size / 2}px`;
+                    autoSelection.style.width = `${data.size}px`;
+                    autoSelection.style.height = `${data.size}px`;
+                } else {
+                    console.error('Datos incompletos para auto-selection');
+                }
+            })
+            .catch(error => console.error('Error al obtener la selección automática:', error));
+        }
 
-            // Convertir canvas a base64
-            const dataURL = canvas.toDataURL('image/png');
+        function measureLux(x, y) {
+            const rect = capturedImage.getBoundingClientRect();
+            const width = rect.width;
+            const height = rect.height;
+            const size = 4;
 
             fetch('/measure_lux', {
                 method: 'POST',
@@ -81,39 +209,24 @@
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
-                    imageData: dataURL,
+                    imageData: capturedImage.src,
                     x: x,
                     y: y,
-                    size: 25,  // Tamaño predeterminado
-                    width: canvas.width,
-                    height: canvas.height
+                    size: size,
+                    width: width,
+                    height: height
                 })
             })
             .then(response => response.json())
             .then(data => {
                 if (data.lux !== undefined) {
-                    document.getElementById('lux-value').textContent = `Iluminación: ${data.lux.toFixed(2)} lux`;
+                    luxValue.textContent = `Intensidad de luz: ${data.lux.toFixed(2)} lux`;
                 } else {
-                    document.getElementById('lux-value').textContent = `Error: ${data.error}`;
+                    luxValue.textContent = "Error al medir la intensidad de luz";
                 }
             })
-            .catch(error => {
-                document.getElementById('lux-value').textContent = `Error: ${error.message}`;
-            });
+            .catch(error => console.error('Error al medir la intensidad de luz:', error));
         }
-
-        function updateAutoSelection() {
-            fetch('/get_auto_selection')
-                .then(response => response.json())
-                .then(data => {
-                    const x = data.x;
-                    const y = data.y;
-                    autoSelection.style.left = `${x}px`;
-                    autoSelection.style.top = `${y}px`;
-                });
-        }
-
-        setInterval(updateAutoSelection, 1000); // Actualiza la selección automática cada segundo
     </script>
 </body>
 </html>

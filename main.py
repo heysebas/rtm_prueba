@@ -1,138 +1,118 @@
 import cv2
 import numpy as np
 import base64
-from flask import Flask, render_template, Response, jsonify, request
+from flask import Flask, render_template, jsonify, request
 from io import BytesIO
 from PIL import Image
 
 app = Flask(__name__)
 
-# Definir una función de conversión de intensidad a lux
 def pixel_to_lux(intensity):
     return intensity * 0.1  # Ajusta este factor según sea necesario
-
-auto_selection_position = (0, 0)
 
 @app.route('/')
 def index():
     return render_template('index.html')
 
-def generate_frames():
-    global auto_selection_position
+def capture_frame():
     cap = cv2.VideoCapture(0)
-    while True:
-        success, frame = cap.read()
-        if not success:
-            break
-
-        # Convertir a escala de grises
-        gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-
-        # Encontrar la región con mayor iluminación
-        box_width, box_height = 50, 50  # Tamaño de la caja para análisis
-        max_loc = find_brightest_region(gray_frame, box_width, box_height)
-        if max_loc:
-            auto_selection_position = max_loc
-            # Dibujar la selección fija en la región más iluminada
-            cv2.rectangle(frame, max_loc, (max_loc[0] + box_width, max_loc[1] + box_height), (255, 0, 0), 2)
-
-        # Convertir la imagen de nuevo a BGR para mostrarla en color con OpenCV
-        frame = cv2.cvtColor(gray_frame, cv2.COLOR_GRAY2BGR)
-
-        # Dibuja la cuadrícula
-        cell_width = gray_frame.shape[1] // 2
-        cell_height = gray_frame.shape[0] // 13
-
-        for i in range(13):
-            for j in range(2):
-                top_left = (j * cell_width, i * cell_height)
-                bottom_right = ((j + 1) * cell_width, (i + 1) * cell_height)
-                cv2.rectangle(frame, top_left, bottom_right, (255, 255, 255), 1)
-
-        # Añade el texto
-        values = [-6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6]
-        for i in range(13):
-            if i < len(values):
-                text = f'{values[i]}%'
-                text_size, _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 0.4, 1)
-                text_x = 5
-                text_y = (i * cell_height) + (cell_height + text_size[1]) // 2
-                cv2.putText(frame, text, (text_x, text_y), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1)
-
-        _, buffer = cv2.imencode('.jpg', frame)
-        frame_str = buffer.tobytes()
-        yield (b'--frame\r\n'
-               b'Content-Type: image/jpeg\r\n\r\n' + frame_str + b'\r\n')
-
+    ret, frame = cap.read()
     cap.release()
 
-def find_brightest_region(gray_frame, box_width, box_height):
-    """Encuentra la región con mayor iluminación en el frame."""
-    max_avg_intensity = -1
-    brightest_loc = (0, 0)
-    for y in range(0, gray_frame.shape[0] - box_height, box_height):
-        for x in range(0, gray_frame.shape[1] - box_width, box_width):
-            roi = gray_frame[y:y+box_height, x:x+box_width]
-            avg_intensity = np.mean(roi)
-            if avg_intensity > max_avg_intensity:
-                max_avg_intensity = avg_intensity
-                brightest_loc = (x, y)
-    return brightest_loc
+    if not ret:
+        return None
 
-@app.route('/get_auto_selection')
-def get_auto_selection():
-    global auto_selection_position
-    x, y = auto_selection_position
-    return jsonify({'x': x, 'y': y})
+    gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    return gray_frame
 
-@app.route('/video_feed')
-def video_feed():
-    return Response(generate_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
+@app.route('/capture_image')
+def capture_image():
+    gray_frame = capture_frame()
+    if gray_frame is None:
+        return jsonify({"error": "Error al capturar la imagen"}), 500
+
+    _, buffer = cv2.imencode('.png', gray_frame)
+    image_data = base64.b64encode(buffer).decode('utf-8')
+
+    return jsonify({"imageData": f"data:image/png;base64,{image_data}"})
 
 @app.route('/measure_lux', methods=['POST'])
 def measure_lux():
     data = request.json
 
-    # Verificar que los datos estén presentes
     if 'imageData' not in data or 'x' not in data or 'y' not in data or 'size' not in data or 'width' not in data or 'height' not in data:
         return jsonify({"error": "Datos incompletos"}), 400
 
-    try:
-        # Decodificar la imagen base64
-        header, encoded = data['imageData'].split(',', 1)
-        image_data = base64.b64decode(encoded)
-        image = Image.open(BytesIO(image_data))
-        image = np.array(image)
+    image_data = data['imageData']
+    x = int(data['x'])
+    y = int(data['y'])
+    size = int(data['size'])
+    width = int(data['width'])
+    height = int(data['height'])
 
-        # Convertir la imagen a escala de grises
-        if image.shape[2] == 4:  # RGBA
-            gray_image = cv2.cvtColor(image, cv2.COLOR_RGBA2GRAY)
-        else:
-            gray_image = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+    image_data = image_data.split(',')[1]
+    image_data = base64.b64decode(image_data)
+    image = Image.open(BytesIO(image_data))
+    image = np.array(image.convert('L'))
 
-        width = int(data['width'])
-        height = int(data['height'])
+    x1 = max(x - size // 2, 0)
+    y1 = max(y - size // 2, 0)
+    x2 = min(x + size // 2, width)
+    y2 = min(y + size // 2, height)
 
-        # Extraer la región de interés
-        x = int(data['x'])
-        y = int(data['y'])
-        size = int(data['size'])
+    region = image[y1:y2, x1:x2]
+    average_intensity = np.mean(region)
 
-        roi_x1 = max(x - size, 0)
-        roi_y1 = max(y - size, 0)
-        roi_x2 = min(x + size, width)
-        roi_y2 = min(y + size, height)
+    lux = pixel_to_lux(average_intensity)
 
-        roi_gray = gray_image[roi_y1:roi_y2, roi_x1:roi_x2]
+    return jsonify({"lux": lux})
 
-        average_intensity = np.mean(roi_gray)
-        lux_value = pixel_to_lux(average_intensity)
+@app.route('/get_auto_selection', methods=['POST'])
+def get_auto_selection():
+    data = request.json
+    if 'imageData' not in data or 'pattern' not in data:
+        return jsonify({"error": "Datos incompletos"}), 400
 
-        return jsonify({'lux': lux_value})
+    pattern = data['pattern']
+    image_data = data['imageData']
+    image_data = image_data.split(',')[1]
+    image_data = base64.b64decode(image_data)
+    image = Image.open(BytesIO(image_data))
+    image = np.array(image.convert('L'))
 
-    except Exception as e:
-        print(f"Error: {e}")
-        return jsonify({"error": "Error al procesar la imagen"}), 500
+    # Aquí puedes ajustar la lógica de selección en función del patrón
+    x, y, size = 0, 0, 4
+    max_lux = -1
 
-if __name__ == "__main__":
+    if pattern == "ECE-R":
+        # Lógica para ECE-R
+        pass
+    elif pattern == "ECE-L":
+        # Lógica para ECE-L
+        pass
+    elif pattern == "ECE-simétrico":
+        # Lógica para ECE-simétrico
+        pass
+    elif pattern == "VOL":
+        # Lógica para VOL
+        pass
+    elif pattern == "VOR":
+        # Lógica para VOR
+        pass
+    elif pattern == "DOT/SAE mecánico":
+        # Lógica para DOT/SAE mecánico
+        pass
+
+    # Ejemplo de lógica básica (sin cambios)
+    for i in range(0, image.shape[0] - size, size):
+        for j in range(0, image.shape[1] - size, size):
+            region = image[i:i+size, j:j+size]
+            average_intensity = np.mean(region)
+            if average_intensity > max_lux:
+                max_lux = average_intensity
+                x, y = j + size // 2, i + size // 2
+
+    return jsonify({"x": x, "y": y, "size": size})
+
+if __name__ == '__main__':
     app.run(debug=True)
