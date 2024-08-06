@@ -1,11 +1,27 @@
-import cv2
-import numpy as np
-import base64
 from flask import Flask, render_template, jsonify, request
+from pymongo import MongoClient
+import mysql.connector
+import base64
 from io import BytesIO
 from PIL import Image
+import cv2
+import numpy as np
 
 app = Flask(__name__)
+
+# Conexión a MongoDB
+mongo_client = MongoClient('mongodb://localhost:27017/')
+mongo_db = mongo_client['CendaPro']
+mongo_collection = mongo_db['exampleCollection']
+
+# Conexión a MySQL
+mysql_conn = mysql.connector.connect(
+    host="localhost",
+    user="root",
+    password="1234",  # Contraseña actualizada
+    database="Cenda"
+)
+mysql_cursor = mysql_conn.cursor()
 
 def pixel_to_lux(intensity):
     return intensity * 0.1  # Ajusta este factor según sea necesario
@@ -35,6 +51,37 @@ def capture_image():
     image_data = base64.b64encode(buffer).decode('utf-8')
 
     return jsonify({"imageData": f"data:image/png;base64,{image_data}"})
+
+@app.route('/save_data', methods=['POST'])
+def save_data():
+    data = request.json
+    if 'imageData' not in data or 'plate' not in data:
+        return jsonify({"error": "Datos incompletos"}), 400
+
+    image_data = data['imageData']
+    plate = data['plate']
+
+    try:
+        # Decodifica la imagen
+        image_data = image_data.split(',')[1]  # Extrae el contenido base64
+        image_data = base64.b64decode(image_data)  # Decodifica base64
+
+        # Guarda en MongoDB
+        mongo_collection.insert_one({
+            'plate': plate,
+            'image': image_data
+        })
+
+        # Guarda en MySQL (como datos binarios)
+        sql = "INSERT INTO RTM (placa, image) VALUES (%s, %s)"
+        mysql_cursor.execute(sql, (plate, image_data))
+        mysql_conn.commit()
+
+        return jsonify({"success": True})
+
+    except Exception as e:
+        print(f"Error: {e}")
+        return jsonify({"error": "Error al guardar los datos"}), 500
 
 @app.route('/measure_lux', methods=['POST'])
 def measure_lux():

@@ -105,6 +105,12 @@
             font-size: 18px;
             padding: 5px;
         }
+        #plate-input {
+            margin-bottom: 20px;
+            font-size: 18px;
+            padding: 5px;
+            width: 200px;
+        }
     </style>
 </head>
 <body>
@@ -119,6 +125,9 @@
         <option value="VOR">VOR</option>
         <option value="DOT/SAE mecánico">DOT/SAE mecánico</option>
     </select>
+
+    <!-- Agregar el campo de entrada para la placa -->
+    <input type="text" id="plate-input" placeholder="Ingrese la placa" />
 
     <div id="container">
         <div class="button-group left">
@@ -136,6 +145,7 @@
         </div>
     </div>
     <button class="button-63" onclick="measureLux()">Medir Iluminación</button>
+    <button class="button-63" onclick="saveData()">Guardar Datos</button>
     <p id="lux-value"></p>
 
     <script>
@@ -143,6 +153,7 @@
         const selection = document.getElementById('selection');
         const autoSelection = document.getElementById('auto-selection');
         const luxValue = document.getElementById('lux-value');
+        const plateInput = document.getElementById('plate-input');
         let currentPattern = "ECE-R";
 
         function changePattern() {
@@ -226,6 +237,34 @@
                 }
             })
             .catch(error => console.error('Error al medir la intensidad de luz:', error));
+        }
+
+        function saveData() {
+            const plate = plateInput.value;
+            if (!plate || !capturedImage.src) {
+                alert('Por favor capture una imagen y proporcione la placa.');
+                return;
+            }
+
+            fetch('/save_data', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    imageData: capturedImage.src,
+                    plate: plate
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert('Datos guardados correctamente.');
+                } else {
+                    alert('Error al guardar los datos.');
+                }
+            })
+            .catch(error => console.error('Error al guardar los datos:', error));
         }
     </script>
 </body>
